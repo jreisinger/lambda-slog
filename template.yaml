@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Minimal SAM template for lambda-slog
+Description: Lambda function with structured logging using Go's log/slog
 
 Resources:
   LambdaSlogFunction:
