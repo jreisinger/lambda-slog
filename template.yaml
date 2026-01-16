@@ -3,6 +3,12 @@ Transform: AWS::Serverless-2016-10-31
 Description: Lambda function with structured logging using Go's log/slog
 
 Resources:
+  LambdaSlogLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/lambda-slog-LambdaSlogFunction
+      RetentionInDays: 7
+
   LambdaSlogFunction:
     Type: AWS::Serverless::Function
     Metadata:
