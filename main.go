@@ -6,20 +6,14 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
 )
 
-var (
-	baseLogger *slog.Logger
-	coldStart  = true
-	once       sync.Once
-)
-
-func initLogger() *slog.Logger {
+func newLogger() *slog.Logger {
 	level := slog.LevelInfo
 	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
 	case "DEBUG":
@@ -39,48 +33,52 @@ func initLogger() *slog.Logger {
 		slog.String("service", getenv("SERVICE_NAME", "my-lambda")),
 	)
 
-	// Make it default logger so slog.Info and others works too.
+	// Make it default logger so slog.Info and others work too.
 	slog.SetDefault(l)
 
 	return l
 }
 
 func main() {
-	lambda.Start(handler)
+	logger := newLogger()
+	lambda.Start(newHandler(logger))
 }
 
-func handler(ctx context.Context) (string, error) {
-	once.Do(func() { baseLogger = initLogger() })
+func newHandler(logger *slog.Logger) func(context.Context) (string, error) {
+	var coldStart atomic.Bool
+	coldStart.Store(true)
 
-	logger := withInvocationLogger(ctx)
+	return func(ctx context.Context) (string, error) {
+		logger := withInvocationLogger(ctx, logger)
 
-	// Cold start flag is useful in dashboards
-	logger = logger.With(slog.Bool("cold_start", coldStart))
-	coldStart = false
+		// Cold start flag is useful in dashboards
+		logger = logger.With(slog.Bool("cold_start", coldStart.Load()))
+		coldStart.Store(false)
 
-	start := time.Now()
-	logger.InfoContext(ctx, "handling request")
+		start := time.Now()
+		logger.InfoContext(ctx, "handling request")
 
-	// Example: return an error sometimes
-	if time.Now().Unix()%7 == 0 {
-		err := errors.New("boom")
-		logger.ErrorContext(ctx, "request failed", slog.Any("err", err))
-		return "", err
+		// Example: return an error sometimes
+		if time.Now().Unix()%7 == 0 {
+			err := errors.New("boom")
+			logger.ErrorContext(ctx, "request failed", slog.Any("err", err))
+			return "", err
+		}
+
+		logger.InfoContext(ctx, "request ok", slog.Int64("duration_ns", time.Since(start).Nanoseconds()))
+		return "ok", nil
 	}
-
-	logger.InfoContext(ctx, "request ok", slog.Duration("duration_ms", time.Since(start)))
-	return "ok", nil
 }
 
-func withInvocationLogger(ctx context.Context) *slog.Logger {
+func withInvocationLogger(ctx context.Context, logger *slog.Logger) *slog.Logger {
 	lc, ok := lambdacontext.FromContext(ctx)
 	if ok {
-		return baseLogger.With(
+		return logger.With(
 			slog.String("aws_request_id", lc.AwsRequestID),
 			slog.String("invoked_function_arn", lc.InvokedFunctionArn),
 		)
 	}
-	return baseLogger
+	return logger
 }
 
 func getenv(k, def string) string {
