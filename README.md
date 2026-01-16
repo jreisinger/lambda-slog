@@ -18,7 +18,7 @@ Deploy:
 
 ```
 sam build
-sam deploy # uses samconfig.yaml (created with --guided)
+sam deploy # uses samconfig.toml (created with --guided)
 ```
 
 Delete:
